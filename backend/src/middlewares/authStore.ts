@@ -3,6 +3,29 @@ import { prisma } from "../config/prisma.js";
 import { hashApiKey } from "../utils/crypto.js";
 
 export async function authStore(request: FastifyRequest, reply: FastifyReply) {
+  // 1. Suporte a Token Embed de Curta Duração (via query ?token=... ou header X-Embed-Token)
+  const embedToken =
+    (request.query as Record<string, string>)?.token ||
+    (request.headers["x-embed-token"] as string | undefined);
+
+  if (embedToken) {
+    try {
+      const decoded = request.server.jwt.verify<{ store_id: string; scope: string }>(embedToken);
+      if (decoded && decoded.store_id) {
+        const store = await prisma.store.findUnique({
+          where: { id: decoded.store_id, ativo: true },
+        });
+        if (store) {
+          request.store = store;
+          return;
+        }
+      }
+    } catch {
+      // Continua para checar API key permanente
+    }
+  }
+
+  // 2. Autenticação por API Key Permanente (Header X-Store-API-Key ou Bearer)
   const headerKey = request.headers["x-store-api-key"] as string | undefined;
   const authHeader = request.headers.authorization;
 
@@ -15,7 +38,7 @@ export async function authStore(request: FastifyRequest, reply: FastifyReply) {
     return reply.status(401).send({
       statusCode: 401,
       error: "Unauthorized",
-      message: "Cabeçalho X-Store-API-Key não fornecido.",
+      message: "Cabeçalho X-Store-API-Key ou token embed não fornecido.",
     });
   }
 

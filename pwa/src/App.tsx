@@ -6,6 +6,7 @@ import { HomePage } from "./pages/HomePage.tsx";
 import { HistoryPage } from "./pages/HistoryPage.tsx";
 import { ProfilePage } from "./pages/ProfilePage.tsx";
 import { TrackingPage } from "./pages/TrackingPage.tsx";
+import { EmbedPanelPage } from "./pages/EmbedPanelPage.tsx";
 import { BottomNav, NavTab } from "./components/BottomNav.tsx";
 
 export function App() {
@@ -23,6 +24,9 @@ export function App() {
   const trackingMatch = window.location.pathname.match(/\/t\/([a-zA-Z0-9_-]+)/);
   const trackingToken = trackingMatch ? trackingMatch[1] : null;
 
+  // Rota do painel embutível da loja
+  const isEmbed = window.location.pathname.startsWith("/embed/painel");
+
   useEffect(() => {
     function handleUnauthorized() {
       setCourier(null);
@@ -32,12 +36,12 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (inviteToken || trackingToken) {
+    if (inviteToken || trackingToken || isEmbed) {
       setLoading(false);
       return;
     }
     loadProfile();
-  }, [inviteToken, trackingToken]);
+  }, [inviteToken, trackingToken, isEmbed]);
 
   async function loadProfile() {
     setLoading(true);
@@ -91,6 +95,11 @@ export function App() {
   // Se acessou por link de rastreamento público do cliente
   if (trackingToken) {
     return <TrackingPage token={trackingToken} />;
+  }
+
+  // Se acessou pela rota do painel embutível da loja
+  if (isEmbed) {
+    return <EmbedPanelPage authQuery={window.location.search} />;
   }
 
   // Se não autenticado
