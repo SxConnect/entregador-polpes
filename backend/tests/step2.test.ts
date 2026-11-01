@@ -234,6 +234,56 @@ describe("Etapa 2: Lojas, Entregadores, Convites e Multi-Tenant", () => {
       expect(res.json().veiculo).toBe("bicicleta");
     });
 
+    it("TOGGLE VÍNCULO: deve alternar status do entregador entre ativo/inativo", async () => {
+      // 1. Desativa o vínculo via toggle
+      const resToggleOff = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/couriers/${courier1Id}/toggle`,
+        headers: { "x-store-api-key": store1ApiKey },
+        payload: { ativo: false },
+      });
+      expect(resToggleOff.statusCode).toBe(200);
+      expect(resToggleOff.json().ativo).toBe(false);
+
+      // 2. Com vínculo inativo, NÃO aparece no dropdown de pedidos (?disponiveis=true)
+      const resDispFalse = await app.inject({
+        method: "GET",
+        url: "/api/v1/couriers?disponiveis=true",
+        headers: { "x-store-api-key": store1ApiKey },
+      });
+      expect(resDispFalse.statusCode).toBe(200);
+      expect(resDispFalse.json().couriers).toHaveLength(0);
+
+      // 3. Mas AINDA aparece na aba de entregadores para poder reativar o toggle
+      const resAll = await app.inject({
+        method: "GET",
+        url: "/api/v1/couriers",
+        headers: { "x-store-api-key": store1ApiKey },
+      });
+      expect(resAll.statusCode).toBe(200);
+      expect(resAll.json().couriers).toHaveLength(1);
+      expect(resAll.json().couriers[0].ativo).toBe(false);
+
+      // 4. Reativa o vínculo via toggle
+      const resToggleOn = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/couriers/${courier1Id}/toggle`,
+        headers: { "x-store-api-key": store1ApiKey },
+        payload: { ativo: true },
+      });
+      expect(resToggleOn.statusCode).toBe(200);
+      expect(resToggleOn.json().ativo).toBe(true);
+
+      // 5. Agora volta a aparecer em ?disponiveis=true para vincular pedidos
+      const resDispTrue = await app.inject({
+        method: "GET",
+        url: "/api/v1/couriers?disponiveis=true",
+        headers: { "x-store-api-key": store1ApiKey },
+      });
+      expect(resDispTrue.statusCode).toBe(200);
+      expect(resDispTrue.json().couriers).toHaveLength(1);
+    });
+
     it("Loja 1 pode gerar/reenviar um novo convite para o entregador", async () => {
       const res = await app.inject({
         method: "POST",

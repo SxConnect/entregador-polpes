@@ -32,13 +32,15 @@ export async function courierRoutes(app: FastifyInstance) {
   app.addHook("preHandler", authStore);
 
   // ── Listar Entregadores da Loja ──────────────────────────────────────
+  // ?disponiveis=true: filtra apenas vínculos ativos para atribuição de pedidos
   app.get("/api/v1/couriers", async (request, reply) => {
     const storeId = request.store!.id;
+    const { disponiveis } = request.query as { disponiveis?: string };
 
     const links = await prisma.courierStoreLink.findMany({
       where: {
         store_id: storeId,
-        ativo: true,
+        ...(disponiveis === "true" ? { ativo: true } : {}),
       },
       include: {
         courier: {
@@ -299,6 +301,42 @@ export async function courierRoutes(app: FastifyInstance) {
       placa: updatedCourier.placa,
       status: updatedCourier.status,
       ativo: ativo !== undefined ? ativo : link.ativo,
+    });
+  });
+
+  // ── Alternar Vínculo Ativo/Inativo (Toggle) ──────────────────────────
+  app.patch("/api/v1/couriers/:id/toggle", async (request, reply) => {
+    const storeId = request.store!.id;
+    const { id } = request.params as { id: string };
+    const body = (request.body as { ativo?: boolean }) || {};
+
+    const link = await prisma.courierStoreLink.findFirst({
+      where: { courier_id: id, store_id: storeId },
+    });
+
+    if (!link) {
+      return reply.status(404).send({
+        statusCode: 404,
+        error: "Not Found",
+        message: "Entregador não vinculado a esta loja.",
+      });
+    }
+
+    const novoStatus = typeof body.ativo === "boolean" ? body.ativo : !link.ativo;
+
+    const updatedLink = await prisma.courierStoreLink.update({
+      where: { id: link.id },
+      data: { ativo: novoStatus },
+      include: { courier: true },
+    });
+
+    return reply.send({
+      courier_id: id,
+      nome: updatedLink.courier.nome,
+      ativo: updatedLink.ativo,
+      message: updatedLink.ativo
+        ? "Vínculo ativado. O entregador agora pode receber pedidos."
+        : "Vínculo desativado. O entregador não aparecerá para vincular pedidos.",
     });
   });
 
