@@ -8,6 +8,7 @@ import { courierRoutes } from "./routes/courierRoutes.js";
 import { inviteRoutes } from "./routes/inviteRoutes.js";
 import { deliveryStoreRoutes } from "./routes/deliveryStoreRoutes.js";
 import { deliveryCourierRoutes } from "./routes/deliveryCourierRoutes.js";
+import { courierAuthRoutes } from "./routes/courierAuthRoutes.js";
 
 export function buildApp(): FastifyInstance {
   const app = Fastify({
@@ -38,6 +39,7 @@ export function buildApp(): FastifyInstance {
   app.register(inviteRoutes);
   app.register(deliveryStoreRoutes);
   app.register(deliveryCourierRoutes);
+  app.register(courierAuthRoutes);
 
   return app;
 }
