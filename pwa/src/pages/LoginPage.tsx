@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { courierLogin, setToken } from "../services/api.ts";
-import { Bike, Phone, ArrowRight } from "lucide-react";
+import { Phone, ArrowRight } from "lucide-react";
 
 interface Props {
   onSuccess: () => void;
@@ -46,9 +46,14 @@ export function LoginPage({ onSuccess }: Props) {
     <div className="min-h-screen flex flex-col justify-between bg-slate-50 max-w-md mx-auto p-4 sm:p-6">
       <div className="pt-8 space-y-6">
         <div className="text-center space-y-2">
-          <div className="w-16 h-16 bg-brand-600 text-white rounded-2xl flex items-center justify-center mx-auto shadow-md shadow-brand-500/20">
-            <Bike className="w-9 h-9" />
-          </div>
+          <img
+            src="/logo-polpes.png"
+            alt="Logo Entregador"
+            className="w-20 h-20 rounded-2xl mx-auto shadow-md object-contain bg-white p-1 border border-slate-200"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).src = "/logo-default.png";
+            }}
+          />
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">App do Entregador</h1>
           <p className="text-xs text-slate-500">Entre com seu número cadastrado</p>
         </div>

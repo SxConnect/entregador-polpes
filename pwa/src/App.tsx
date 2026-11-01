@@ -6,7 +6,6 @@ import { HomePage } from "./pages/HomePage.tsx";
 import { HistoryPage } from "./pages/HistoryPage.tsx";
 import { ProfilePage } from "./pages/ProfilePage.tsx";
 import { BottomNav, NavTab } from "./components/BottomNav.tsx";
-import { Bike } from "lucide-react";
 
 export function App() {
   const [loading, setLoading] = useState(true);
@@ -56,9 +55,14 @@ export function App() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center space-y-3">
-          <div className="w-12 h-12 bg-brand-600 text-white rounded-2xl flex items-center justify-center mx-auto shadow-md animate-bounce">
-            <Bike className="w-6 h-6" />
-          </div>
+          <img
+            src="/logo-polpes.png"
+            alt="Entregador"
+            className="w-16 h-16 rounded-2xl mx-auto object-contain bg-white p-1 border border-slate-200 shadow-md animate-bounce"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).src = "/logo-default.png";
+            }}
+          />
           <p className="text-xs text-slate-500 font-semibold tracking-wide">Carregando Entregador...</p>
         </div>
       </div>

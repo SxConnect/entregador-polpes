@@ -189,10 +189,15 @@ export function HomePage({ courier, onRefreshProfile }: Props) {
     <div className="min-h-screen flex flex-col bg-slate-100 text-slate-900 pb-20">
       {/* Header com Status do Entregador */}
       <header className="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between shadow-xs sticky top-0 z-30">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-xl bg-brand-600 text-white flex items-center justify-center font-bold">
-            <Bike className="w-5 h-5" />
-          </div>
+        <div className="flex items-center gap-2.5">
+          <img
+            src={courier?.logo_url || "/logo-polpes.png"}
+            alt="Logo"
+            className="w-10 h-10 rounded-xl object-contain bg-white border border-slate-200 p-0.5 shadow-xs"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).src = "/logo-default.png";
+            }}
+          />
           <div>
             <h1 className="font-bold text-sm text-slate-900 leading-tight">Olá, {courier?.nome?.split(" ")[0]}</h1>
             <span className="text-[11px] text-slate-500 capitalize">{courier?.veiculo} {courier?.placa ? `• ${courier.placa}` : ""}</span>

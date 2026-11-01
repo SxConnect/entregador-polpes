@@ -1,8 +1,28 @@
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
+import fs from "node:fs";
+import path from "node:path";
+import { pipeline } from "node:stream/promises";
 import { prisma } from "../config/prisma.js";
 import { authStore } from "../middlewares/authStore.js";
 import { generateApiKey, hashApiKey } from "../utils/crypto.js";
+
+export function resolveStoreLogo(store?: { core_store_id?: string; nome?: string; settings?: any } | null): string {
+  if (!store) return "/uploads/logos/logo-polpes.png";
+  const settings = (store.settings as Record<string, any>) || {};
+  if (settings.pwa_logo_url) {
+    return settings.pwa_logo_url;
+  }
+  // Se for a Polpes, usa o logo específico da Polpes
+  const coreId = (store.core_store_id || "").toLowerCase();
+  const storeNome = (store.nome || "").toLowerCase();
+  const isPolpes = coreId.includes("polpes") || storeNome.includes("polpe");
+  if (isPolpes) {
+    return "/uploads/logos/logo-polpes.png";
+  }
+  // Fallback genérico para qualquer outra loja (Logo Pluga)
+  return "/uploads/logos/logo-default.png";
+}
 
 const provisionSchema = z.object({
   core_store_id: z.string().min(1, "core_store_id é obrigatório"),
@@ -107,7 +127,101 @@ export async function storeRoutes(app: FastifyInstance) {
       webhook_url: store.webhook_url,
       webhook_configured: Boolean(store.webhook_secret),
       settings: store.settings || {},
+      logo_url: resolveStoreLogo(store),
       criado_em: store.criado_em,
+    });
+  });
+
+  // ── Upload de Logo Personalizado para o PWA da Loja ──────────────────
+  app.post("/api/v1/store/logo", { preHandler: [authStore] }, async (request, reply) => {
+    const store = request.store!;
+    const file = await request.file();
+
+    if (!file) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: "Nenhum arquivo enviado.",
+      });
+    }
+
+    const allowedMimes = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
+    if (!allowedMimes.includes(file.mimetype)) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: "Formato inválido. Envie uma imagem PNG, JPG ou WebP.",
+      });
+    }
+
+    const ext = path.extname(file.filename || ".png") || ".png";
+    const fileName = `store_${store.id}_${Date.now()}${ext}`;
+    const uploadDir = path.resolve(process.cwd(), "uploads/logos");
+    fs.mkdirSync(uploadDir, { recursive: true });
+    const targetPath = path.join(uploadDir, fileName);
+
+    await pipeline(file.file, fs.createWriteStream(targetPath));
+
+    const pwaLogoUrl = `/uploads/logos/${fileName}`;
+    const currentSettings = (store.settings as Record<string, any>) || {};
+    const updatedSettings = { ...currentSettings, pwa_logo_url: pwaLogoUrl };
+
+    await prisma.store.update({
+      where: { id: store.id },
+      data: { settings: updatedSettings },
+    });
+
+    return reply.send({
+      success: true,
+      pwa_logo_url: pwaLogoUrl,
+      message: "Logo do PWA atualizado com sucesso!",
+    });
+  });
+
+  // ── Remover Logo Personalizado (Volta ao Padrão) ─────────────────────
+  app.delete("/api/v1/store/logo", { preHandler: [authStore] }, async (request, reply) => {
+    const store = request.store!;
+    const currentSettings = (store.settings as Record<string, any>) || {};
+    const { pwa_logo_url, ...restSettings } = currentSettings;
+
+    const updated = await prisma.store.update({
+      where: { id: store.id },
+      data: { settings: restSettings },
+    });
+
+    return reply.send({
+      success: true,
+      logo_url: resolveStoreLogo(updated),
+      message: "Logo personalizado removido. Restaurado o logo padrão.",
+    });
+  });
+
+  // ── Marca Pública da Loja (Para PWA e Rastreio do Cliente) ───────────
+  app.get("/api/v1/store/public-brand", async (request, reply) => {
+    const query = request.query as { store_id?: string; core_store_id?: string };
+
+    let store = null;
+    if (query.store_id) {
+      store = await prisma.store.findUnique({ where: { id: query.store_id } });
+    } else if (query.core_store_id) {
+      store = await prisma.store.findUnique({ where: { core_store_id: query.core_store_id } });
+    } else {
+      // Default: primeira loja ativa
+      store = await prisma.store.findFirst({ where: { ativo: true } });
+    }
+
+    if (!store) {
+      return reply.send({
+        nome: "Polpê's Açaí",
+        logo_url: "/logo-polpes.png",
+      });
+    }
+
+    return reply.send({
+      store_id: store.id,
+      core_store_id: store.core_store_id,
+      nome: store.nome,
+      logo_url: resolveStoreLogo(store),
     });
   });
 

@@ -19,7 +19,7 @@ export async function inviteRoutes(app: FastifyInstance) {
       where: { token },
       include: {
         courier: true,
-        store: { select: { id: true, nome: true } },
+        store: { select: { id: true, nome: true, core_store_id: true, settings: true } },
       },
     });
 
@@ -49,6 +49,8 @@ export async function inviteRoutes(app: FastifyInstance) {
       });
     }
 
+    const { resolveStoreLogo } = await import("./storeRoutes.js");
+
     return reply.send({
       valid: true,
       courier: {
@@ -61,6 +63,7 @@ export async function inviteRoutes(app: FastifyInstance) {
       store: {
         id: invite.store.id,
         nome: invite.store.nome,
+        logo_url: resolveStoreLogo(invite.store),
       },
       expira_em: invite.expira_em,
       requires_lgpd: !Boolean(invite.courier.consentimento_lgpd_em),

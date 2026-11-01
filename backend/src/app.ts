@@ -1,7 +1,10 @@
 import Fastify, { FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
+import multipart from "@fastify/multipart";
+import fastifyStatic from "@fastify/static";
 import sensible from "@fastify/sensible";
+import path from "node:path";
 import { env } from "./config/env.js";
 import { storeRoutes } from "./routes/storeRoutes.js";
 import { courierRoutes } from "./routes/courierRoutes.js";
@@ -23,6 +26,19 @@ export function buildApp(): FastifyInstance {
   });
 
   app.register(sensible);
+
+  app.register(multipart, {
+    limits: {
+      fileSize: 5 * 1024 * 1024, // 5MB max
+    },
+  });
+
+  const uploadsPath = path.resolve(process.cwd(), "uploads");
+  app.register(fastifyStatic, {
+    root: uploadsPath,
+    prefix: "/uploads/",
+    decorateReply: false,
+  });
 
   app.register(jwt, {
     secret: env.JWT_SECRET,
