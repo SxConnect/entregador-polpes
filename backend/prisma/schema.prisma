@@ -1,0 +1,163 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ── Loja (Tenant) ────────────────────────────────────────────────────────
+model Store {
+  id             String   @id @default(uuid()) @db.Uuid
+  core_store_id  String   @unique
+  nome           String
+  api_key_hash   String   // SHA-256 da API key fornecida ao Core
+  webhook_url    String?
+  webhook_secret String?
+  ativo          Boolean  @default(true)
+  settings       Json?    @default("{}") // valor_padrao_corrida, tempo_aceite_segundos, exigir_codigo_confirmacao, exigir_foto, msg_padrao_rastreio
+  criado_em      DateTime @default(now())
+  atualizado_em  DateTime @updatedAt
+
+  courier_links   CourierStoreLink[]
+  deliveries      Delivery[]
+  delivery_events DeliveryEvent[]
+  courier_invites CourierInvite[]
+
+  @@map("stores")
+}
+
+// ── Entregador (Entidade Global) ─────────────────────────────────────────
+model Courier {
+  id                    String    @id @default(uuid()) @db.Uuid
+  nome                  String
+  telefone              String    @unique
+  veiculo               String    @default("moto") // moto, bicicleta, carro, a_pe
+  placa                 String?
+  status                String    @default("offline") // offline, online, em_corrida
+  ativo                 Boolean   @default(true)
+  consentimento_lgpd_em DateTime?
+  consentimento_versao  String?
+  criado_em             DateTime  @default(now())
+  atualizado_em         DateTime  @updatedAt
+
+  store_links CourierStoreLink[]
+  deliveries  Delivery[]
+  locations   CourierLocation[]
+  invites     CourierInvite[]
+
+  @@map("couriers")
+}
+
+// ── Vínculo Entregador <-> Loja (Multi-tenant) ───────────────────────────
+model CourierStoreLink {
+  id         String   @id @default(uuid()) @db.Uuid
+  courier_id String   @db.Uuid
+  store_id   String   @db.Uuid
+  tipo       String   @default("proprio") // proprio, parceiro
+  ativo      Boolean  @default(true)
+  criado_em  DateTime @default(now())
+  atualizado_em DateTime @updatedAt
+
+  courier Courier @relation(fields: [courier_id], references: [id], onDelete: Cascade)
+  store   Store   @relation(fields: [store_id], references: [id], onDelete: Cascade)
+
+  @@unique([courier_id, store_id])
+  @@index([store_id])
+  @@index([courier_id])
+  @@map("courier_store_links")
+}
+
+// ── Convites de Entregadores ─────────────────────────────────────────────
+model CourierInvite {
+  id         String    @id @default(uuid()) @db.Uuid
+  token      String    @unique
+  courier_id String    @db.Uuid
+  store_id   String    @db.Uuid
+  expira_em  DateTime
+  usado_em   DateTime?
+  criado_em  DateTime  @default(now())
+
+  courier Courier @relation(fields: [courier_id], references: [id], onDelete: Cascade)
+  store   Store   @relation(fields: [store_id], references: [id], onDelete: Cascade)
+
+  @@index([store_id])
+  @@index([courier_id])
+  @@map("courier_invites")
+}
+
+// ── Entregas / Corridas ──────────────────────────────────────────────────
+model Delivery {
+  id                  String    @id @default(uuid()) @db.Uuid
+  store_id            String    @db.Uuid
+  core_order_id       String
+  courier_id          String?   @db.Uuid
+  status              String    @default("pendente") // pendente, atribuido, aceito, coletado, em_rota, entregue, cancelado, recusado
+  endereco_retirada   Json
+  endereco_entrega    Json
+  entrega_lat         Float?
+  entrega_lng         Float?
+  cliente_nome        String
+  cliente_telefone    String
+  valor_corrida       Float     @default(0.0)
+  codigo_confirmacao  String    @db.VarChar(10) // Código de 4 dígitos informado pelo cliente
+  foto_comprovante_url String?
+  tracking_token      String    @unique @default(uuid())
+
+  // Timestamps de cada etapa da máquina de estados
+  criado_em     DateTime  @default(now())
+  atribuido_em  DateTime?
+  aceito_em     DateTime?
+  coletado_em   DateTime?
+  em_rota_em    DateTime?
+  entregue_em   DateTime?
+  cancelado_em  DateTime?
+  atualizado_em DateTime  @updatedAt
+
+  store   Store            @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  courier Courier?         @relation(fields: [courier_id], references: [id], onDelete: SetNull)
+  events  DeliveryEvent[]
+
+  @@unique([store_id, core_order_id])
+  @@index([store_id, status])
+  @@index([courier_id, status])
+  @@index([tracking_token])
+  @@map("deliveries")
+}
+
+// ── Log Imutável de Eventos da Entrega ───────────────────────────────────
+model DeliveryEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  delivery_id String   @db.Uuid
+  store_id    String   @db.Uuid
+  status      String
+  autor_tipo  String   // loja, entregador, sistema, core
+  autor_id    String?
+  lat         Float?
+  lng         Float?
+  payload     Json?
+  criado_em   DateTime @default(now())
+
+  delivery Delivery @relation(fields: [delivery_id], references: [id], onDelete: Cascade)
+  store    Store    @relation(fields: [store_id], references: [id], onDelete: Cascade)
+
+  @@index([delivery_id])
+  @@index([store_id])
+  @@map("delivery_events")
+}
+
+// ── Histórico de Localização do Entregador (Rastreio) ───────────────────
+model CourierLocation {
+  id         String   @id @default(uuid()) @db.Uuid
+  courier_id String   @db.Uuid
+  lat        Float
+  lng        Float
+  precisao   Float?
+  timestamp  DateTime @default(now())
+
+  courier Courier @relation(fields: [courier_id], references: [id], onDelete: Cascade)
+
+  @@index([courier_id, timestamp])
+  @@map("courier_locations")
+}
