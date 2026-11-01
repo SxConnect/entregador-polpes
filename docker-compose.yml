@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: entregador_secret
       POSTGRES_DB: entregador_polpes
     ports:
-      - "5433:5432"
+      - "5437:5432"
     volumes:
       - entregador-pgdata:/var/lib/postgresql/data
     healthcheck:
