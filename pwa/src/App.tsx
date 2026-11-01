@@ -5,6 +5,7 @@ import { InvitePage } from "./pages/InvitePage.tsx";
 import { HomePage } from "./pages/HomePage.tsx";
 import { HistoryPage } from "./pages/HistoryPage.tsx";
 import { ProfilePage } from "./pages/ProfilePage.tsx";
+import { TrackingPage } from "./pages/TrackingPage.tsx";
 import { BottomNav, NavTab } from "./components/BottomNav.tsx";
 
 export function App() {
@@ -18,6 +19,10 @@ export function App() {
   const inviteMatch = window.location.pathname.match(/\/convite\/([a-zA-Z0-9_-]+)/);
   const inviteToken = inviteMatch ? inviteMatch[1] : null;
 
+  // Rota de rastreio público: detecta se pathname é /t/:token
+  const trackingMatch = window.location.pathname.match(/\/t\/([a-zA-Z0-9_-]+)/);
+  const trackingToken = trackingMatch ? trackingMatch[1] : null;
+
   useEffect(() => {
     function handleUnauthorized() {
       setCourier(null);
@@ -27,12 +32,12 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (inviteToken) {
+    if (inviteToken || trackingToken) {
       setLoading(false);
       return;
     }
     loadProfile();
-  }, [inviteToken]);
+  }, [inviteToken, trackingToken]);
 
   async function loadProfile() {
     setLoading(true);
@@ -81,6 +86,11 @@ export function App() {
         }}
       />
     );
+  }
+
+  // Se acessou por link de rastreamento público do cliente
+  if (trackingToken) {
+    return <TrackingPage token={trackingToken} />;
   }
 
   // Se não autenticado
