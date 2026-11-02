@@ -1,16 +1,17 @@
 # =====================================================================
-# entregador-polpes — Stack para Portainer + Traefik
-# Subdomínio PWA e API: https://entregador.polpes.com.br
+# Stack Separada e Independente: entregador-polpes (PWA + API)
 #
+# Esta stack é OPCIONAL e fica separada do painel e do cardápio.
+# Subdomínio PWA: https://entregador.polpes.com.br
 # Imagem: ghcr.io/sxconnect/entregador-polpes:latest
-# Banco:  PostgreSQL 16 (serviço `db` interno da stack)
-# Rede:   portainer_default (rede externa do Traefik na VPS)
 # =====================================================================
+
+version: "3.8"
 
 services:
 
-  # ── Banco de Dados PostgreSQL ───────────────────────────────────────
-  db:
+  # ── Banco de Dados Dedicado de Entregas ─────────────────────────────
+  entregador-db:
     image: postgres:16-alpine
     container_name: entregador-db
     restart: unless-stopped
@@ -27,27 +28,29 @@ services:
       retries: 5
       start_period: 20s
     networks:
-      - proxy
+      - internal
 
-  # ── App (Backend Fastify + PWA Integrado) ───────────────────────────
-  app:
+  # ── App do Entregador (Backend Fastify + PWA Integrado) ──────────────
+  entregador-app:
     image: ghcr.io/sxconnect/entregador-polpes:latest
     container_name: entregador-app
     restart: unless-stopped
     depends_on:
-      db:
+      entregador-db:
         condition: service_healthy
     environment:
       - NODE_ENV=production
       - PORT=4001
       - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://entregador:entregador_secret_troque_aqui@db:5432/entregador_polpes?schema=public
+      - DATABASE_URL=postgresql://entregador:entregador_secret_troque_aqui@entregador-db:5432/entregador_polpes?schema=public
       - JWT_SECRET=sua_chave_jwt_super_secreta_minimo_32_caracteres_polpes
       - COURIER_SESSION_EXPIRES_IN=30d
       - PWA_BASE_URL=https://entregador.polpes.com.br
       - TRACKING_BASE_URL=https://entregador.polpes.com.br/t
     volumes:
       - entregador-uploads:/app/uploads
+    ports:
+      - "127.0.0.1:4002:4001"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:4001/health || exit 1"]
       interval: 30s
@@ -55,23 +58,16 @@ services:
       retries: 5
       start_period: 30s
     networks:
-      - proxy
+      - internal
+      - portainer_default
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=portainer_default"
-      - "traefik.http.services.entregador-svc.loadbalancer.server.port=4001"
-
-      # ── Subdomínio do PWA do Entregador com SSL Let's Encrypt ───────
-      - "traefik.http.routers.entregador-router.rule=Host(`entregador.polpes.com.br`)"
-      - "traefik.http.routers.entregador-router.entrypoints=websecure"
-      - "traefik.http.routers.entregador-router.service=entregador-svc"
-      - "traefik.http.routers.entregador-router.tls=true"
-      - "traefik.http.routers.entregador-router.tls.certresolver=leresolver"
-
-      # ── Rota HTTP (Redirecionamento / Acesso direto) ───────────────
-      - "traefik.http.routers.entregador-http.rule=Host(`entregador.polpes.com.br`)"
-      - "traefik.http.routers.entregador-http.entrypoints=web"
-      - "traefik.http.routers.entregador-http.service=entregador-svc"
+      - "traefik.http.services.entregador-app.loadbalancer.server.port=4001"
+      - "traefik.http.routers.entregador-app.rule=Host(`entregador.polpes.com.br`)"
+      - "traefik.http.routers.entregador-app.entrypoints=websecure"
+      - "traefik.http.routers.entregador-app.service=entregador-app"
+      - "traefik.http.routers.entregador-app.tls.certresolver=leresolver"
 
 volumes:
   entregador-pgdata:
@@ -80,6 +76,7 @@ volumes:
     driver: local
 
 networks:
-  proxy:
+  internal:
+    driver: bridge
+  portainer_default:
     external: true
-    name: portainer_default
