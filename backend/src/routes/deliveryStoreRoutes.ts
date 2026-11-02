@@ -7,18 +7,23 @@ import { authStore } from "../middlewares/authStore.js";
 import { generateConfirmationCode } from "../utils/crypto.js";
 import { assertValidTransition } from "../services/deliveryStateMachine.js";
 import { dispatchStoreWebhook } from "../services/webhookService.js";
+import { resolveSettings } from "../services/settingsService.js";
 
 const createDeliverySchema = z.object({
   core_order_id: z.string().min(1, "core_order_id é obrigatório"),
-  endereco_retirada: z.object({
-    logradouro: z.string().min(1),
-    numero: z.string().optional().default(""),
-    bairro: z.string().optional().default(""),
-    cidade: z.string().optional().default(""),
-    complemento: z.string().optional().default(""),
-    lat: z.number().optional().nullable(),
-    lng: z.number().optional().nullable(),
-  }),
+  branch_id: z.string().uuid().optional().nullable(),
+  core_branch_id: z.string().optional().nullable(),
+  endereco_retirada: z
+    .object({
+      logradouro: z.string().min(1),
+      numero: z.string().optional().default(""),
+      bairro: z.string().optional().default(""),
+      cidade: z.string().optional().default(""),
+      complemento: z.string().optional().default(""),
+      lat: z.number().optional().nullable(),
+      lng: z.number().optional().nullable(),
+    })
+    .optional(),
   endereco_entrega: z.object({
     logradouro: z.string().min(1),
     numero: z.string().optional().default(""),
@@ -63,6 +68,8 @@ export async function deliveryStoreRoutes(app: FastifyInstance) {
 
     const {
       core_order_id,
+      branch_id,
+      core_branch_id,
       endereco_retirada,
       endereco_entrega,
       cliente_nome,
@@ -71,7 +78,36 @@ export async function deliveryStoreRoutes(app: FastifyInstance) {
       courier_id,
     } = parsed.data;
 
-    // Idempotência estrita: se a entrega já foi criada para esse core_order_id, devolve a existente
+    // 1. Resolve a Unidade (Filial/Matriz) de onde sai o pedido
+    let targetBranch = null;
+    if (branch_id) {
+      targetBranch = await prisma.branch.findFirst({
+        where: { id: branch_id, store_id: store.id, ativo: true },
+      });
+    } else if (core_branch_id) {
+      targetBranch = await prisma.branch.findFirst({
+        where: { core_branch_id, store_id: store.id, ativo: true },
+      });
+    } else {
+      // Default: filial padrão (Matriz) ou primeira ativa
+      targetBranch =
+        (await prisma.branch.findFirst({
+          where: { store_id: store.id, is_default: true, ativo: true },
+        })) ||
+        (await prisma.branch.findFirst({
+          where: { store_id: store.id, ativo: true },
+        }));
+    }
+
+    if (!targetBranch) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: "Nenhuma unidade (filial/matriz) ativa encontrada para esta loja.",
+      });
+    }
+
+    // 2. Idempotência estrita: se a entrega já foi criada, devolve a existente
     const existing = await prisma.delivery.findUnique({
       where: {
         store_id_core_order_id: {
@@ -80,6 +116,7 @@ export async function deliveryStoreRoutes(app: FastifyInstance) {
         },
       },
       include: {
+        branch: { select: { id: true, nome: true, core_branch_id: true } },
         courier: { select: { id: true, nome: true, telefone: true, veiculo: true } },
       },
     });
@@ -92,7 +129,7 @@ export async function deliveryStoreRoutes(app: FastifyInstance) {
       });
     }
 
-    // Se courier_id foi passado, valida se tem vínculo ATIVO com esta loja (toggle)
+    // 3. Validação do entregador, se atribuído na criação
     let initialStatus = "pendente";
     let atribuidoEm: Date | null = null;
 
@@ -113,22 +150,44 @@ export async function deliveryStoreRoutes(app: FastifyInstance) {
         });
       }
 
+      // Validação de restrição por filial
+      if (!link.todas_unidades) {
+        const branchLink = await prisma.courierBranchLink.findFirst({
+          where: { courier_id, branch_id: targetBranch.id, ativo: true },
+        });
+        if (!branchLink) {
+          return reply.status(400).send({
+            statusCode: 400,
+            error: "Bad Request",
+            message: "Este entregador está restrito a outras unidades e não pode receber pedidos desta filial.",
+          });
+        }
+      }
+
       initialStatus = "atribuido";
       atribuidoEm = new Date();
     }
 
-    const storeSettings = (store.settings as Record<string, any>) || {};
-    const finalValor = valor_corrida ?? Number(storeSettings.valor_padrao_corrida || 7.0);
+    // 4. Herança de configurações: Unidade > Loja > Padrão
+    const effectiveSettings = await resolveSettings(store.id, targetBranch.id);
+    const finalValor = valor_corrida ?? Number(effectiveSettings.valor_padrao_corrida || 7.0);
+
+    // Endereço de retirada herdado da unidade caso não seja enviado no pedido
+    const finalEnderecoRetirada = endereco_retirada || targetBranch.endereco_retirada || {
+      logradouro: targetBranch.nome,
+    };
+
     const codigoConfirmacao = generateConfirmationCode();
     const trackingToken = crypto.randomUUID();
 
     const delivery = await prisma.delivery.create({
       data: {
         store_id: store.id,
+        branch_id: targetBranch.id,
         core_order_id,
         courier_id: courier_id ?? null,
         status: initialStatus,
-        endereco_retirada,
+        endereco_retirada: finalEnderecoRetirada,
         endereco_entrega,
         entrega_lat: endereco_entrega.lat ?? null,
         entrega_lng: endereco_entrega.lng ?? null,
@@ -140,6 +199,7 @@ export async function deliveryStoreRoutes(app: FastifyInstance) {
         atribuido_em: atribuidoEm,
       },
       include: {
+        branch: { select: { id: true, nome: true, core_branch_id: true } },
         courier: { select: { id: true, nome: true, telefone: true, veiculo: true } },
       },
     });
@@ -152,16 +212,16 @@ export async function deliveryStoreRoutes(app: FastifyInstance) {
         status: initialStatus,
         autor_tipo: "loja",
         autor_id: store.id,
-        payload: { core_order_id, courier_id },
+        payload: { core_order_id, branch_id: targetBranch.id, courier_id },
       },
     });
 
     const trackingUrl = `${env.TRACKING_BASE_URL}/${delivery.tracking_token}`;
 
-    // Dispara webhook para o Core
     dispatchStoreWebhook(store.id, initialStatus === "atribuido" ? "delivery.assigned" : "delivery.created", {
       delivery_id: delivery.id,
       core_order_id: delivery.core_order_id,
+      branch_id: delivery.branch_id,
       status: delivery.status,
       tracking_url: trackingUrl,
       courier: delivery.courier,
@@ -174,11 +234,12 @@ export async function deliveryStoreRoutes(app: FastifyInstance) {
     });
   });
 
-  // ── Listar Entregas da Loja (Filtros e Paginação) ──────────────────────
+  // ── Listar Entregas da Loja (Filtro por Filial, Status e Paginação) ───
   app.get("/api/v1/deliveries", async (request, reply) => {
     const store = request.store!;
     const query = request.query as {
       status?: string;
+      branch_id?: string;
       courier_id?: string;
       limit?: string;
       offset?: string;
@@ -186,6 +247,7 @@ export async function deliveryStoreRoutes(app: FastifyInstance) {
 
     const where: any = { store_id: store.id };
     if (query.status) where.status = query.status;
+    if (query.branch_id) where.branch_id = query.branch_id;
     if (query.courier_id) where.courier_id = query.courier_id;
 
     const limit = Math.min(Math.max(parseInt(query.limit || "50", 10), 1), 100);
@@ -195,6 +257,7 @@ export async function deliveryStoreRoutes(app: FastifyInstance) {
       prisma.delivery.findMany({
         where,
         include: {
+          branch: { select: { id: true, nome: true, core_branch_id: true } },
           courier: { select: { id: true, nome: true, telefone: true, veiculo: true } },
         },
         orderBy: { criado_em: "desc" },
@@ -223,6 +286,7 @@ export async function deliveryStoreRoutes(app: FastifyInstance) {
     const delivery = await prisma.delivery.findFirst({
       where: { id, store_id: store.id },
       include: {
+        branch: true,
         courier: { select: { id: true, nome: true, telefone: true, veiculo: true, placa: true } },
         events: { orderBy: { criado_em: "asc" } },
       },
@@ -242,7 +306,7 @@ export async function deliveryStoreRoutes(app: FastifyInstance) {
     });
   });
 
-  // ── Atribuir Entregador Manualmente à Corrida ─────────────────────────
+  // ── Atribuir Entregador Manualmente à Corrida (Com Validação de Filial) 
   app.post("/api/v1/deliveries/:id/assign", async (request, reply) => {
     const store = request.store!;
     const { id } = request.params as { id: string };
@@ -280,7 +344,7 @@ export async function deliveryStoreRoutes(app: FastifyInstance) {
       });
     }
 
-    // Valida se o entregador tem vínculo ATIVO com esta loja (toggle)
+    // 1. Valida se o entregador tem vínculo ATIVO com esta loja (toggle)
     const link = await prisma.courierStoreLink.findFirst({
       where: {
         courier_id,
@@ -298,6 +362,25 @@ export async function deliveryStoreRoutes(app: FastifyInstance) {
       });
     }
 
+    // 2. Valida restrição por unidade (se não atender a todas as unidades)
+    if (!link.todas_unidades) {
+      const branchLink = await prisma.courierBranchLink.findFirst({
+        where: {
+          courier_id,
+          branch_id: delivery.branch_id,
+          ativo: true,
+        },
+      });
+
+      if (!branchLink) {
+        return reply.status(400).send({
+          statusCode: 400,
+          error: "Bad Request",
+          message: "Este entregador está restrito a outras unidades e não pode receber pedidos desta filial.",
+        });
+      }
+    }
+
     const now = new Date();
     const updated = await prisma.delivery.update({
       where: { id: delivery.id },
@@ -307,6 +390,7 @@ export async function deliveryStoreRoutes(app: FastifyInstance) {
         atribuido_em: now,
       },
       include: {
+        branch: { select: { id: true, nome: true, core_branch_id: true } },
         courier: { select: { id: true, nome: true, telefone: true, veiculo: true } },
       },
     });
@@ -318,7 +402,7 @@ export async function deliveryStoreRoutes(app: FastifyInstance) {
         status: "atribuido",
         autor_tipo: "loja",
         autor_id: store.id,
-        payload: { courier_id, courier_nome: link.courier.nome },
+        payload: { courier_id, courier_nome: link.courier.nome, branch_id: delivery.branch_id },
       },
     });
 
@@ -327,6 +411,7 @@ export async function deliveryStoreRoutes(app: FastifyInstance) {
     dispatchStoreWebhook(store.id, "delivery.assigned", {
       delivery_id: updated.id,
       core_order_id: updated.core_order_id,
+      branch_id: updated.branch_id,
       status: updated.status,
       tracking_url: trackingUrl,
       courier: updated.courier,
@@ -412,3 +497,4 @@ export async function deliveryStoreRoutes(app: FastifyInstance) {
     });
   });
 }
+

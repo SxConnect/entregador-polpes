@@ -7,7 +7,7 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// ── Loja (Tenant) ────────────────────────────────────────────────────────
+// ── Loja (Conta / Tenant Principal) ──────────────────────────────────────
 model Store {
   id             String   @id @default(uuid()) @db.Uuid
   core_store_id  String   @unique
@@ -20,12 +20,36 @@ model Store {
   criado_em      DateTime @default(now())
   atualizado_em  DateTime @updatedAt
 
+  branches        Branch[]
   courier_links   CourierStoreLink[]
   deliveries      Delivery[]
   delivery_events DeliveryEvent[]
   courier_invites CourierInvite[]
 
   @@map("stores")
+}
+
+// ── Unidades / Filiais (Hierarquia: Loja -> Unidade) ────────────────────
+model Branch {
+  id                String   @id @default(uuid()) @db.Uuid
+  store_id          String   @db.Uuid
+  core_branch_id    String?  // Id da filial no Core ou número da loja (ex.: "1", "filial_sul")
+  nome              String   // Ex.: "Matriz", "Filial Copacabana", "Unidade 02"
+  endereco_retirada Json     @default("{}") // logradouro, numero, bairro, cidade, complemento, lat, lng
+  telefone          String?
+  ativo             Boolean  @default(true)
+  is_default        Boolean  @default(false)
+  settings          Json?    @default("{}") // Sobrescreve configurações da loja (herança)
+  criado_em         DateTime @default(now())
+  atualizado_em     DateTime @updatedAt
+
+  store         Store               @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  deliveries    Delivery[]
+  courier_links CourierBranchLink[]
+
+  @@unique([store_id, core_branch_id])
+  @@index([store_id])
+  @@map("branches")
 }
 
 // ── Entregador (Entidade Global) ─────────────────────────────────────────
@@ -42,23 +66,25 @@ model Courier {
   criado_em             DateTime  @default(now())
   atualizado_em         DateTime  @updatedAt
 
-  store_links CourierStoreLink[]
-  deliveries  Delivery[]
-  locations   CourierLocation[]
-  invites     CourierInvite[]
+  store_links  CourierStoreLink[]
+  branch_links CourierBranchLink[]
+  deliveries   Delivery[]
+  locations    CourierLocation[]
+  invites      CourierInvite[]
 
   @@map("couriers")
 }
 
 // ── Vínculo Entregador <-> Loja (Multi-tenant) ───────────────────────────
 model CourierStoreLink {
-  id         String   @id @default(uuid()) @db.Uuid
-  courier_id String   @db.Uuid
-  store_id   String   @db.Uuid
-  tipo       String   @default("proprio") // proprio, parceiro
-  ativo      Boolean  @default(true)
-  criado_em  DateTime @default(now())
-  atualizado_em DateTime @updatedAt
+  id             String   @id @default(uuid()) @db.Uuid
+  courier_id     String   @db.Uuid
+  store_id       String   @db.Uuid
+  tipo           String   @default("proprio") // proprio, parceiro
+  ativo          Boolean  @default(true)
+  todas_unidades Boolean  @default(true) // Se false, atende apenas unidades em CourierBranchLink
+  criado_em      DateTime @default(now())
+  atualizado_em  DateTime @updatedAt
 
   courier Courier @relation(fields: [courier_id], references: [id], onDelete: Cascade)
   store   Store   @relation(fields: [store_id], references: [id], onDelete: Cascade)
@@ -67,6 +93,24 @@ model CourierStoreLink {
   @@index([store_id])
   @@index([courier_id])
   @@map("courier_store_links")
+}
+
+// ── Vínculo Específico Entregador <-> Unidade (Filial) ───────────────────
+model CourierBranchLink {
+  id         String   @id @default(uuid()) @db.Uuid
+  courier_id String   @db.Uuid
+  branch_id  String   @db.Uuid
+  ativo      Boolean  @default(true)
+  criado_em  DateTime @default(now())
+  atualizado_em DateTime @updatedAt
+
+  courier Courier @relation(fields: [courier_id], references: [id], onDelete: Cascade)
+  branch  Branch  @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+
+  @@unique([courier_id, branch_id])
+  @@index([branch_id])
+  @@index([courier_id])
+  @@map("courier_branch_links")
 }
 
 // ── Convites de Entregadores ─────────────────────────────────────────────
@@ -91,11 +135,12 @@ model CourierInvite {
 model Delivery {
   id                  String    @id @default(uuid()) @db.Uuid
   store_id            String    @db.Uuid
+  branch_id           String    @db.Uuid // Unidade de onde sai a entrega
   core_order_id       String
   courier_id          String?   @db.Uuid
   status              String    @default("pendente") // pendente, atribuido, aceito, coletado, em_rota, entregue, cancelado, recusado
-  endereco_retirada   Json
-  endereco_entrega    Json
+  endereco_retirada   Json      // Endereço da unidade
+  endereco_entrega    Json      // Endereço de destino do cliente
   entrega_lat         Float?
   entrega_lng         Float?
   cliente_nome        String
@@ -116,11 +161,13 @@ model Delivery {
   atualizado_em DateTime  @updatedAt
 
   store   Store            @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  branch  Branch           @relation(fields: [branch_id], references: [id], onDelete: Restrict)
   courier Courier?         @relation(fields: [courier_id], references: [id], onDelete: SetNull)
   events  DeliveryEvent[]
 
   @@unique([store_id, core_order_id])
   @@index([store_id, status])
+  @@index([branch_id, status])
   @@index([courier_id, status])
   @@index([tracking_token])
   @@map("deliveries")

@@ -106,6 +106,29 @@ export async function storeRoutes(app: FastifyInstance) {
       isCreated = true;
     }
 
+    // Toda loja nova recebe automaticamente uma unidade padrão ("Matriz")
+    const existingDefaultBranch = await prisma.branch.findFirst({
+      where: { store_id: store.id, is_default: true },
+    });
+
+    if (!existingDefaultBranch) {
+      await prisma.branch.create({
+        data: {
+          store_id: store.id,
+          core_branch_id: "matriz",
+          nome: "Matriz",
+          is_default: true,
+          ativo: true,
+          endereco_retirada: {
+            logradouro: "Endereço Principal",
+            numero: "",
+            bairro: "",
+            cidade: "",
+          },
+        },
+      });
+    }
+
     return reply.status(isCreated ? 201 : 200).send({
       store_id: store.id,
       core_store_id: store.core_store_id,
