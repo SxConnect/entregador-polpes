@@ -15,6 +15,7 @@ RUN npm run build
 # ── Stage 2: Build Backend ────────────────────────────────────────────
 FROM node:20-alpine AS backend-builder
 WORKDIR /app/backend
+RUN apk add --no-cache openssl libc6-compat
 
 COPY backend/package*.json ./
 RUN npm ci
@@ -28,6 +29,7 @@ RUN npm run build
 # ── Stage 3: Runner (Produção) ─────────────────────────────────────────
 FROM node:20-alpine AS runner
 WORKDIR /app
+RUN apk add --no-cache openssl libc6-compat
 
 ENV NODE_ENV=production
 ENV PORT=4001
