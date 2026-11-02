@@ -4,6 +4,7 @@ import jwt from "@fastify/jwt";
 import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
 import sensible from "@fastify/sensible";
+import fs from "node:fs";
 import path from "node:path";
 import { env } from "./config/env.js";
 import { storeRoutes } from "./routes/storeRoutes.js";
@@ -62,6 +63,35 @@ export function buildApp(): FastifyInstance {
   app.register(trackingRoutes);
   app.register(embedRoutes);
   app.register(branchRoutes);
+
+  // ── Servir PWA Estático e Roteamento SPA (Produção / Container) ─────
+  const pwaDistContainer = path.resolve(process.cwd(), "pwa-dist");
+  const pwaDistDev = path.resolve(process.cwd(), "../pwa/dist");
+  const pwaPath = fs.existsSync(pwaDistContainer)
+    ? pwaDistContainer
+    : fs.existsSync(pwaDistDev)
+    ? pwaDistDev
+    : null;
+
+  if (pwaPath) {
+    app.register(fastifyStatic, {
+      root: pwaPath,
+      prefix: "/",
+      decorateReply: false,
+    });
+
+    app.setNotFoundHandler((req, reply) => {
+      const url = req.raw.url || "";
+      if (url.startsWith("/api/") || url.startsWith("/uploads/")) {
+        return reply.status(404).send({
+          statusCode: 404,
+          error: "Not Found",
+          message: "Recurso não encontrado",
+        });
+      }
+      return reply.sendFile("index.html", pwaPath);
+    });
+  }
 
   return app;
 }
