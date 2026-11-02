@@ -59,13 +59,19 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=portainer_default"
-      - "traefik.http.services.entregador-app.loadbalancer.server.port=4001"
+      - "traefik.http.services.entregador-svc.loadbalancer.server.port=4001"
 
-      # ── Roteador Traefik HTTPS com Let's Encrypt ───────────────────
-      - "traefik.http.routers.entregador-app.rule=Host(`entregador.polpes.com.br`)"
-      - "traefik.http.routers.entregador-app.entrypoints=websecure"
-      - "traefik.http.routers.entregador-app.service=entregador-app"
-      - "traefik.http.routers.entregador-app.tls.certresolver=leresolver"
+      # ── Subdomínio do PWA do Entregador com SSL Let's Encrypt ───────
+      - "traefik.http.routers.entregador-router.rule=Host(`entregador.polpes.com.br`)"
+      - "traefik.http.routers.entregador-router.entrypoints=websecure"
+      - "traefik.http.routers.entregador-router.service=entregador-svc"
+      - "traefik.http.routers.entregador-router.tls=true"
+      - "traefik.http.routers.entregador-router.tls.certresolver=leresolver"
+
+      # ── Rota HTTP (Redirecionamento / Acesso direto) ───────────────
+      - "traefik.http.routers.entregador-http.rule=Host(`entregador.polpes.com.br`)"
+      - "traefik.http.routers.entregador-http.entrypoints=web"
+      - "traefik.http.routers.entregador-http.service=entregador-svc"
 
 volumes:
   entregador-pgdata:

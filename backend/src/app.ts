@@ -73,11 +73,17 @@ export function buildApp(): FastifyInstance {
     ? pwaDistDev
     : null;
 
-  if (pwaPath) {
+  if (pwaPath && fs.existsSync(path.join(pwaPath, "index.html"))) {
+    const indexHtml = fs.readFileSync(path.join(pwaPath, "index.html"), "utf-8");
+
     app.register(fastifyStatic, {
       root: pwaPath,
       prefix: "/",
       decorateReply: false,
+    });
+
+    app.get("/", async (_req, reply) => {
+      return reply.type("text/html; charset=utf-8").send(indexHtml);
     });
 
     app.setNotFoundHandler((req, reply) => {
@@ -89,7 +95,7 @@ export function buildApp(): FastifyInstance {
           message: "Recurso não encontrado",
         });
       }
-      return reply.sendFile("index.html", pwaPath);
+      return reply.type("text/html; charset=utf-8").send(indexHtml);
     });
   }
 
