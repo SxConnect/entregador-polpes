@@ -186,18 +186,23 @@ export function HomePage({ courier, onRefreshProfile }: Props) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-100 text-slate-900 pb-20">
+    <div className="min-h-screen flex flex-col bg-slate-100 text-slate-900 pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
       {/* Header com Status do Entregador */}
-      <header className="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between shadow-xs sticky top-0 z-30">
+      <header className="bg-white border-b border-slate-200 px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] flex items-center justify-between shadow-xs sticky top-0 z-30">
         <div className="flex items-center gap-2.5">
-          <img
-            src={courier?.logo_url || "/logo-polpes.png"}
-            alt="Logo"
-            className="w-10 h-10 rounded-xl object-contain bg-white border border-slate-200 p-0.5 shadow-xs"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).src = "/logo-default.png";
-            }}
-          />
+          <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 p-0.5 shadow-xs flex items-center justify-center overflow-hidden shrink-0">
+            <img
+              src={courier?.logo_url || "/logo-polpes.png"}
+              alt="Logo"
+              width="40"
+              height="40"
+              className="w-full h-full object-contain"
+              style={{ width: "100%", height: "100%", maxWidth: "40px", maxHeight: "40px" }}
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src = "/logo-default.png";
+              }}
+            />
+          </div>
           <div>
             <h1 className="font-bold text-sm text-slate-900 leading-tight">Olá, {courier?.nome?.split(" ")[0]}</h1>
             <span className="text-[11px] text-slate-500 capitalize">{courier?.veiculo} {courier?.placa ? `• ${courier.placa}` : ""}</span>

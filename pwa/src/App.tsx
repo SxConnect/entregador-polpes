@@ -62,16 +62,21 @@ export function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="min-h-screen w-full flex items-center justify-center bg-slate-50 px-4">
         <div className="text-center space-y-3">
-          <img
-            src="/logo-polpes.png"
-            alt="Entregador"
-            className="w-16 h-16 rounded-2xl mx-auto object-contain bg-white p-1 border border-slate-200 shadow-md animate-bounce"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).src = "/logo-default.png";
-            }}
-          />
+          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl mx-auto bg-white p-2.5 border border-slate-200 shadow-md flex items-center justify-center overflow-hidden animate-bounce">
+            <img
+              src="/logo-polpes.png"
+              alt="Entregador"
+              width="80"
+              height="80"
+              className="w-full h-full object-contain"
+              style={{ width: "100%", height: "100%", maxWidth: "80px", maxHeight: "80px" }}
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src = "/logo-default.png";
+              }}
+            />
+          </div>
           <p className="text-xs text-slate-500 font-semibold tracking-wide">Carregando Entregador...</p>
         </div>
       </div>
@@ -109,26 +114,28 @@ export function App() {
 
   // App Autenticado
   return (
-    <div className="min-h-screen max-w-md mx-auto relative bg-slate-50">
-      {currentTab === "home" && (
-        <HomePage courier={courier} onRefreshProfile={loadProfile} />
-      )}
+    <div className="min-h-screen w-full bg-slate-200 sm:bg-slate-100 flex justify-center">
+      <div className="w-full max-w-md min-h-screen bg-slate-50 relative flex flex-col shadow-2xl sm:border-x sm:border-slate-200">
+        {currentTab === "home" && (
+          <HomePage courier={courier} onRefreshProfile={loadProfile} />
+        )}
 
-      {currentTab === "history" && <HistoryPage />}
+        {currentTab === "history" && <HistoryPage />}
 
-      {currentTab === "profile" && (
-        <ProfilePage
-          courier={courier}
-          stores={stores}
-          onLogout={() => setCourier(null)}
+        {currentTab === "profile" && (
+          <ProfilePage
+            courier={courier}
+            stores={stores}
+            onLogout={() => setCourier(null)}
+          />
+        )}
+
+        <BottomNav
+          currentTab={currentTab}
+          onChangeTab={setCurrentTab}
+          hasActiveDelivery={hasActiveDelivery}
         />
-      )}
-
-      <BottomNav
-        currentTab={currentTab}
-        onChangeTab={setCurrentTab}
-        hasActiveDelivery={hasActiveDelivery}
-      />
+      </div>
     </div>
   );
 }

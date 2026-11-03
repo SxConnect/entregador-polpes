@@ -52,4 +52,4 @@ COPY pwa/public/logo-default.png /app/uploads/logos/logo-default.png
 
 EXPOSE 4001
 
-CMD ["node", "dist/server.js"]
+CMD ["sh", "-c", "npx prisma db push --skip-generate && node dist/server.js"]

@@ -62,6 +62,7 @@ model Courier {
   placa                 String?
   status                String    @default("offline") // offline, online, em_corrida
   ativo                 Boolean   @default(true)
+  senha_hash            String?   // Salt + hash scrypt da senha de acesso
   consentimento_lgpd_em DateTime?
   consentimento_versao  String?
   criado_em             DateTime  @default(now())

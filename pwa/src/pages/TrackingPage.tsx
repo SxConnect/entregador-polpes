@@ -130,14 +130,19 @@ export function TrackingPage({ token }: Props) {
       {/* Header com Loja e Logo */}
       <header className="bg-white border-b border-slate-200 p-4 sticky top-0 z-30 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <img
-            src={data.store.logo_url || "/logo-polpes.png"}
-            alt={data.store.nome}
-            className="w-10 h-10 rounded-xl object-contain bg-white border border-slate-200 p-0.5 shadow-xs"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).src = "/logo-default.png";
-            }}
-          />
+          <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 p-0.5 shadow-xs flex items-center justify-center overflow-hidden shrink-0">
+            <img
+              src={data.store.logo_url || "/logo-polpes.png"}
+              alt={data.store.nome}
+              width="40"
+              height="40"
+              className="w-full h-full object-contain"
+              style={{ width: "100%", height: "100%", maxWidth: "40px", maxHeight: "40px" }}
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src = "/logo-default.png";
+              }}
+            />
+          </div>
           <div>
             <span className="text-[10px] text-slate-400 uppercase font-bold block">Acompanhamento</span>
             <strong className="text-sm font-bold text-slate-900">{data.store.nome}</strong>

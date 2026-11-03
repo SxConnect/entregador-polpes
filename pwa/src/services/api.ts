@@ -46,18 +46,31 @@ export async function getInvite(token: string) {
   return request(`/api/v1/invites/${token}`);
 }
 
-export async function acceptInvite(token: string, consentimento_versao = "1.0") {
+export async function acceptInvite(token: string, senha?: string, consentimento_versao = "1.0") {
   return request(`/api/v1/invites/${token}/accept`, {
     method: "POST",
-    body: JSON.stringify({ consentimento_lgpd: true, consentimento_versao }),
+    body: JSON.stringify({ consentimento_lgpd: true, consentimento_versao, ...(senha ? { senha } : {}) }),
   });
 }
 
-// ── Auth Direta ───────────────────────────────────────────────────────
-export async function courierLogin(telefone: string) {
+// ── Auth Direta com Telefone e Senha ──────────────────────────────────
+export async function courierLogin(telefone: string, senha: string) {
   return request("/api/v1/courier/auth/login", {
     method: "POST",
-    body: JSON.stringify({ telefone }),
+    body: JSON.stringify({ telefone, senha }),
+  });
+}
+
+export async function registerCourierPassword(data: {
+  telefone: string;
+  senha: string;
+  nome?: string;
+  veiculo?: "moto" | "bicicleta" | "carro" | "a_pe";
+  placa?: string;
+}) {
+  return request("/api/v1/courier/auth/register-password", {
+    method: "POST",
+    body: JSON.stringify(data),
   });
 }
 

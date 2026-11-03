@@ -2,12 +2,14 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../config/prisma.js";
 import { env } from "../config/env.js";
+import { hashPassword } from "../utils/crypto.js";
 
 const acceptInviteSchema = z.object({
   consentimento_lgpd: z.literal(true, {
     errorMap: () => ({ message: "O consentimento dos termos e LGPD é obrigatório para ativar a conta." }),
   }),
   consentimento_versao: z.string().default("1.0"),
+  senha: z.string().min(4, "A senha deve ter pelo menos 4 caracteres").optional(),
 });
 
 export async function inviteRoutes(app: FastifyInstance) {
@@ -126,6 +128,7 @@ export async function inviteRoutes(app: FastifyInstance) {
           consentimento_versao,
           status: "online",
           ativo: true,
+          ...(parsed.data.senha ? { senha_hash: hashPassword(parsed.data.senha) } : {}),
         },
       }),
       prisma.courierInvite.update({

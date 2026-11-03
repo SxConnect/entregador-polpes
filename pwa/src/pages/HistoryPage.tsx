@@ -25,8 +25,8 @@ export function HistoryPage() {
   const totalEntregas = deliveries.filter((d) => d.status === "entregue").length;
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-100 text-slate-900 pb-20">
-      <header className="bg-white border-b border-slate-200 px-4 py-3 sticky top-0 z-30">
+    <div className="min-h-screen flex flex-col bg-slate-100 text-slate-900 pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
+      <header className="bg-white border-b border-slate-200 px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] sticky top-0 z-30">
         <h1 className="font-bold text-base text-slate-900">Histórico de Entregas</h1>
       </header>
 

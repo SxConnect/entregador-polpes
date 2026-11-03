@@ -10,10 +10,10 @@ interface Props {
 
 export function BottomNav({ currentTab, onChangeTab, hasActiveDelivery }: Props) {
   return (
-    <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-slate-200 px-4 py-2 flex items-center justify-around z-40 shadow-lg">
+    <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 backdrop-blur-md border-t border-slate-200 px-4 pt-2 pb-[max(0.6rem,env(safe-area-inset-bottom))] flex items-center justify-around z-40 shadow-lg">
       <button
         onClick={() => onChangeTab("home")}
-        className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-colors relative ${
+        className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-colors relative active:scale-95 ${
           currentTab === "home" ? "text-brand-600 font-bold" : "text-slate-500 hover:text-slate-800"
         }`}
       >
@@ -26,7 +26,7 @@ export function BottomNav({ currentTab, onChangeTab, hasActiveDelivery }: Props)
 
       <button
         onClick={() => onChangeTab("history")}
-        className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-colors ${
+        className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-colors active:scale-95 ${
           currentTab === "history" ? "text-brand-600 font-bold" : "text-slate-500 hover:text-slate-800"
         }`}
       >
@@ -36,7 +36,7 @@ export function BottomNav({ currentTab, onChangeTab, hasActiveDelivery }: Props)
 
       <button
         onClick={() => onChangeTab("profile")}
-        className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-colors ${
+        className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-colors active:scale-95 ${
           currentTab === "profile" ? "text-brand-600 font-bold" : "text-slate-500 hover:text-slate-800"
         }`}
       >

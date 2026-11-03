@@ -63,10 +63,19 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=portainer_default"
       - "traefik.http.services.entregador-app.loadbalancer.server.port=4001"
+
+      # ── Router HTTPS (websecure) ──
       - "traefik.http.routers.entregador-app.rule=Host(`entregador.polpes.com.br`)"
       - "traefik.http.routers.entregador-app.entrypoints=websecure"
       - "traefik.http.routers.entregador-app.service=entregador-app"
       - "traefik.http.routers.entregador-app.tls.certresolver=leresolver"
+
+      # ── Router HTTP (web) com redirecionamento automático para HTTPS ──
+      - "traefik.http.routers.entregador-app-http.rule=Host(`entregador.polpes.com.br`)"
+      - "traefik.http.routers.entregador-app-http.entrypoints=web"
+      - "traefik.http.routers.entregador-app-http.middlewares=entregador-redirect-https"
+      - "traefik.http.middlewares.entregador-redirect-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.entregador-redirect-https.redirectscheme.permanent=true"
 
 volumes:
   entregador-pgdata:

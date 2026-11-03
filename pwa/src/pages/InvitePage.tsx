@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { getInvite, acceptInvite, setToken } from "../services/api.ts";
-import { ShieldCheck, Store, CheckCircle, AlertCircle } from "lucide-react";
+import { ShieldCheck, Store, CheckCircle, AlertCircle, Lock, Eye, EyeOff } from "lucide-react";
 
 interface Props {
   token: string;
@@ -11,6 +11,9 @@ export function InvitePage({ token, onSuccess }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [inviteData, setInviteData] = useState<any>(null);
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [lgpdAccepted, setLgpdAccepted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -32,9 +35,19 @@ export function InvitePage({ token, onSuccess }: Props) {
       return;
     }
 
+    if (password && password.length < 4) {
+      alert("A senha deve ter pelo menos 4 caracteres.");
+      return;
+    }
+
+    if (password && password !== confirmPassword) {
+      alert("As senhas informadas não coincidem.");
+      return;
+    }
+
     setSubmitting(true);
     try {
-      const res = await acceptInvite(token, "1.0-2026");
+      const res = await acceptInvite(token, password.trim() || undefined, "1.0-2026");
       if (res.token) {
         setToken(res.token);
         onSuccess();
@@ -79,20 +92,28 @@ export function InvitePage({ token, onSuccess }: Props) {
   const { courier, store } = inviteData;
 
   return (
-    <div className="min-h-screen flex flex-col justify-between bg-slate-50 max-w-md mx-auto p-4 sm:p-6">
-      <div className="space-y-6 pt-4">
-        <div className="text-center space-y-2">
-          <img
-            src={store?.logo_url || "/logo-polpes.png"}
-            alt="Logo"
-            className="w-20 h-20 rounded-2xl mx-auto shadow-md object-contain bg-white p-1 border border-slate-200"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).src = "/logo-default.png";
-            }}
-          />
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">App do Entregador</h1>
-          <p className="text-xs text-slate-500">Convite para entrega de pedidos</p>
-        </div>
+    <div className="min-h-screen w-full flex items-center justify-center bg-slate-100 sm:p-4">
+      <div className="w-full max-w-md min-h-screen sm:min-h-0 bg-white sm:rounded-3xl sm:shadow-xl sm:border sm:border-slate-200/80 p-5 sm:p-8 flex flex-col justify-between">
+        <div className="space-y-6 pt-2">
+          <div className="text-center space-y-3">
+            <div className="w-20 h-20 sm:w-24 sm:h-24 mx-auto rounded-3xl bg-white p-2.5 shadow-md border border-slate-200 flex items-center justify-center overflow-hidden">
+              <img
+                src={store?.logo_url || "/logo-polpes.png"}
+                alt="Logo"
+                width="96"
+                height="96"
+                className="w-full h-full object-contain"
+                style={{ width: "100%", height: "100%", maxWidth: "96px", maxHeight: "96px" }}
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).src = "/logo-default.png";
+                }}
+              />
+            </div>
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">App do Entregador</h1>
+              <p className="text-xs sm:text-sm text-slate-500 mt-1">Convite para entrega de pedidos</p>
+            </div>
+          </div>
 
         <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3">
           <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
@@ -117,6 +138,46 @@ export function InvitePage({ token, onSuccess }: Props) {
             <div className="flex justify-between py-1 text-slate-600">
               <span>Veículo:</span>
               <span className="capitalize text-slate-800">{courier.veiculo}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Cadastro de Senha para Acessos Futuros */}
+        <div className="bg-slate-50/90 rounded-2xl p-4 border border-slate-200/80 shadow-xs space-y-3">
+          <div className="flex items-center gap-2 text-slate-800 font-bold text-xs">
+            <Lock className="w-4 h-4 text-brand-600 shrink-0" />
+            <span>Cadastrar Senha de Acesso</span>
+          </div>
+          <p className="text-[11px] text-slate-500">
+            Defina uma senha para poder fazer login no aplicativo em qualquer dispositivo.
+          </p>
+
+          <div className="space-y-2.5">
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Crie uma senha (mínimo 4 caracteres)"
+                className="w-full pl-3 pr-10 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold outline-none focus:border-brand-600"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirme sua nova senha"
+                className="w-full pl-3 pr-10 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold outline-none focus:border-brand-600"
+              />
             </div>
           </div>
         </div>
@@ -166,6 +227,7 @@ export function InvitePage({ token, onSuccess }: Props) {
         <p className="text-[10px] text-center text-slate-400">
           Você poderá acessar este app a qualquer momento sem precisar baixar de lojas de aplicativos.
         </p>
+      </div>
       </div>
     </div>
   );
