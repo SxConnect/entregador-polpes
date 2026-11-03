@@ -10,7 +10,9 @@ type AuthMode = "login" | "register";
 
 export function LoginPage({ onSuccess }: Props) {
   const [mode, setMode] = useState<AuthMode>("login");
-  const [phone, setPhone] = useState("(21) 99698-4261");
+  const [phone, setPhone] = useState(() => {
+    return localStorage.getItem("entregador_ultimo_celular") || "";
+  });
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -58,6 +60,7 @@ export function LoginPage({ onSuccess }: Props) {
     try {
       const res = await courierLogin(cleanDigits, password);
       if (res.token) {
+        localStorage.setItem("entregador_ultimo_celular", phone);
         setToken(res.token);
         onSuccess();
       }
@@ -103,6 +106,7 @@ export function LoginPage({ onSuccess }: Props) {
       });
 
       if (res.token) {
+        localStorage.setItem("entregador_ultimo_celular", phone);
         setToken(res.token);
         setSuccessMsg("Senha cadastrada com sucesso! Entrando...");
         setTimeout(() => {
