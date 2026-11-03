@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { courierLogin, registerCourierPassword, setToken } from "../services/api.ts";
-import { Phone, Lock, Eye, EyeOff, ArrowRight, User, ShieldCheck } from "lucide-react";
+import { Phone, Lock, Eye, EyeOff, ArrowRight, ShieldCheck } from "lucide-react";
 
 interface Props {
   onSuccess: () => void;
@@ -10,32 +10,44 @@ type AuthMode = "login" | "register";
 
 export function LoginPage({ onSuccess }: Props) {
   const [mode, setMode] = useState<AuthMode>("login");
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState("(21) 99698-4261");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [name, setName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  function formatPhoneInput(v: string) {
-    const digits = v.replace(/\D/g, "").slice(0, 11);
+  function formatPhoneInput(v: string): string {
+    let digits = v.replace(/\D/g, "");
+    if (digits.startsWith("55") && digits.length > 11) {
+      digits = digits.slice(2);
+    }
+    digits = digits.slice(0, 11);
     if (digits.length <= 2) return digits;
     if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
     return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
   }
 
+  function getCleanPhone(): string {
+    let digits = phone.replace(/\D/g, "");
+    if (digits.startsWith("55") && digits.length > 11) {
+      digits = digits.slice(2);
+    }
+    return digits;
+  }
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-    const cleanDigits = phone.replace(/\D/g, "");
-    if (cleanDigits.length < 10) {
-      setError("Informe seu telefone com DDD (ex.: 21 99698-4261).");
+    const cleanDigits = getCleanPhone();
+
+    if (!cleanDigits || cleanDigits.length < 10) {
+      setError("Por favor, digite seu número de celular com o DDD (ex: 21 99698-4261).");
       return;
     }
 
-    if (!password) {
-      setError("Digite sua senha de acesso.");
+    if (!password.trim()) {
+      setError("Por favor, digite sua senha de acesso.");
       return;
     }
 
@@ -52,11 +64,8 @@ export function LoginPage({ onSuccess }: Props) {
     } catch (err: any) {
       const msg = err.message || "Não foi possível entrar.";
       setError(msg);
-      // Se ainda não cadastrou senha, sugere alternar para cadastro
       if (msg.includes("não definiu uma senha") || msg.includes("não possui uma senha")) {
-        setTimeout(() => {
-          setMode("register");
-        }, 1500);
+        setMode("register");
       }
     } finally {
       setLoading(false);
@@ -65,19 +74,20 @@ export function LoginPage({ onSuccess }: Props) {
 
   async function handleRegisterPassword(e: React.FormEvent) {
     e.preventDefault();
-    const cleanDigits = phone.replace(/\D/g, "");
-    if (cleanDigits.length < 10) {
-      setError("Informe seu telefone com DDD (ex.: 21 99698-4261).");
+    const cleanDigits = getCleanPhone();
+
+    if (!cleanDigits || cleanDigits.length < 10) {
+      setError("Por favor, digite seu número de celular com o DDD (ex: 21 99698-4261).");
       return;
     }
 
-    if (password.length < 4) {
-      setError("A senha deve ter pelo menos 4 caracteres.");
+    if (!password.trim() || password.length < 4) {
+      setError("A senha deve ter pelo menos 4 caracteres ou dígitos.");
       return;
     }
 
     if (password !== confirmPassword) {
-      setError("As senhas não coincidem. Digite novamente.");
+      setError("As senhas não coincidem. Digite a mesma senha nos dois campos.");
       return;
     }
 
@@ -88,8 +98,7 @@ export function LoginPage({ onSuccess }: Props) {
     try {
       const res = await registerCourierPassword({
         telefone: cleanDigits,
-        senha: password,
-        nome: name.trim() || undefined,
+        senha: password.trim(),
         veiculo: "moto",
       });
 
@@ -98,7 +107,7 @@ export function LoginPage({ onSuccess }: Props) {
         setSuccessMsg("Senha cadastrada com sucesso! Entrando...");
         setTimeout(() => {
           onSuccess();
-        }, 500);
+        }, 400);
       }
     } catch (err: any) {
       setError(err.message || "Erro ao cadastrar senha.");
@@ -130,7 +139,7 @@ export function LoginPage({ onSuccess }: Props) {
               <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">App do Entregador</h1>
               <p className="text-xs sm:text-sm text-slate-500 mt-1">
                 {mode === "login"
-                  ? "Acesse com seu número e senha"
+                  ? "Acesse com seu celular e senha"
                   : "Defina sua senha de acesso"}
               </p>
             </div>
@@ -143,6 +152,7 @@ export function LoginPage({ onSuccess }: Props) {
               onClick={() => {
                 setMode("login");
                 setError(null);
+                setSuccessMsg(null);
               }}
               className={`py-2.5 rounded-xl transition-all cursor-pointer ${
                 mode === "login"
@@ -157,6 +167,7 @@ export function LoginPage({ onSuccess }: Props) {
               onClick={() => {
                 setMode("register");
                 setError(null);
+                setSuccessMsg(null);
               }}
               className={`py-2.5 rounded-xl transition-all cursor-pointer ${
                 mode === "register"
@@ -178,11 +189,12 @@ export function LoginPage({ onSuccess }: Props) {
                 <div className="relative">
                   <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5 pointer-events-none" />
                   <input
+                    key="login-phone"
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
-                    placeholder="(21) 99698-4261"
-                    className="w-full pl-10 pr-3 py-3 border border-slate-300/80 bg-white rounded-xl text-base font-semibold outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 font-mono tracking-wider"
+                    placeholder="(DDD) 90000-0000"
+                    className="w-full pl-10 pr-3 py-3 border border-slate-300 bg-white rounded-xl text-base font-semibold text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20"
                     autoFocus
                   />
                 </div>
@@ -195,11 +207,12 @@ export function LoginPage({ onSuccess }: Props) {
                 <div className="relative">
                   <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5 pointer-events-none" />
                   <input
+                    key="login-password"
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Sua senha secreta"
-                    className="w-full pl-10 pr-10 py-3 border border-slate-300/80 bg-white rounded-xl text-sm font-semibold outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20"
+                    placeholder="Digite sua senha"
+                    className="w-full pl-10 pr-10 py-3 border border-slate-300 bg-white rounded-xl text-sm font-semibold text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20"
                   />
                   <button
                     type="button"
@@ -225,7 +238,7 @@ export function LoginPage({ onSuccess }: Props) {
 
               <button
                 type="submit"
-                disabled={loading || phone.replace(/\D/g, "").length < 10 || !password}
+                disabled={loading}
                 className="w-full py-3.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-sm shadow-md shadow-brand-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.98] cursor-pointer"
               >
                 {loading ? "Entrando..." : "Acessar Entregas"}
@@ -238,6 +251,7 @@ export function LoginPage({ onSuccess }: Props) {
                   onClick={() => {
                     setMode("register");
                     setError(null);
+                    setSuccessMsg(null);
                   }}
                   className="text-xs text-brand-600 font-bold hover:underline cursor-pointer"
                 >
@@ -255,28 +269,13 @@ export function LoginPage({ onSuccess }: Props) {
                 <div className="relative">
                   <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5 pointer-events-none" />
                   <input
+                    key="register-phone"
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
-                    placeholder="(21) 99698-4261"
-                    className="w-full pl-10 pr-3 py-3 border border-slate-300/80 bg-white rounded-xl text-base font-semibold outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 font-mono tracking-wider"
+                    placeholder="(DDD) 90000-0000"
+                    className="w-full pl-10 pr-3 py-3 border border-slate-300 bg-white rounded-xl text-base font-semibold text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20"
                     autoFocus
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  Seu Nome ou Apelido <span className="text-slate-400 font-normal">(opcional)</span>
-                </label>
-                <div className="relative">
-                  <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5 pointer-events-none" />
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Ex: João da Silva"
-                    className="w-full pl-10 pr-3 py-3 border border-slate-300/80 bg-white rounded-xl text-sm font-semibold outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20"
                   />
                 </div>
               </div>
@@ -288,11 +287,12 @@ export function LoginPage({ onSuccess }: Props) {
                 <div className="relative">
                   <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5 pointer-events-none" />
                   <input
+                    key="register-password"
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Mínimo 4 caracteres ou números"
-                    className="w-full pl-10 pr-10 py-3 border border-slate-300/80 bg-white rounded-xl text-sm font-semibold outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20"
+                    className="w-full pl-10 pr-10 py-3 border border-slate-300 bg-white rounded-xl text-sm font-semibold text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20"
                   />
                   <button
                     type="button"
@@ -311,11 +311,12 @@ export function LoginPage({ onSuccess }: Props) {
                 <div className="relative">
                   <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5 pointer-events-none" />
                   <input
+                    key="register-confirm-password"
                     type={showPassword ? "text" : "password"}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Digite a mesma senha"
-                    className="w-full pl-10 pr-10 py-3 border border-slate-300/80 bg-white rounded-xl text-sm font-semibold outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20"
+                    placeholder="Digite a mesma senha novamente"
+                    className="w-full pl-10 pr-10 py-3 border border-slate-300 bg-white rounded-xl text-sm font-semibold text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20"
                   />
                 </div>
               </div>
@@ -334,7 +335,7 @@ export function LoginPage({ onSuccess }: Props) {
 
               <button
                 type="submit"
-                disabled={loading || phone.replace(/\D/g, "").length < 10 || password.length < 4 || !confirmPassword}
+                disabled={loading}
                 className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.98] cursor-pointer"
               >
                 {loading ? "Cadastrando..." : "Cadastrar Senha e Entrar"}
@@ -347,6 +348,7 @@ export function LoginPage({ onSuccess }: Props) {
                   onClick={() => {
                     setMode("login");
                     setError(null);
+                    setSuccessMsg(null);
                   }}
                   className="text-xs text-brand-600 font-bold hover:underline cursor-pointer"
                 >
