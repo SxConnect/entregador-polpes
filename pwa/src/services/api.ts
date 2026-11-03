@@ -98,6 +98,18 @@ export async function acceptDelivery(id: string) {
   return request(`/api/v1/courier/deliveries/${id}/accept`, { method: "POST" });
 }
 
+export async function batchAcceptDeliveries() {
+  return request("/api/v1/courier/deliveries/batch-accept", { method: "POST" });
+}
+
+export async function batchPickupDeliveries() {
+  return request("/api/v1/courier/deliveries/batch-pickup", { method: "POST" });
+}
+
+export async function batchStartRouteDeliveries() {
+  return request("/api/v1/courier/deliveries/batch-start-route", { method: "POST" });
+}
+
 export async function rejectDelivery(id: string) {
   return request(`/api/v1/courier/deliveries/${id}/reject`, { method: "POST" });
 }

@@ -18,35 +18,128 @@ const locationSchema = z.object({
   precisao: z.number().optional().nullable(),
 });
 
+function extractCoords(obj: any, fallbackLat?: number | null, fallbackLng?: number | null): { lat: number; lng: number } | null {
+  if (fallbackLat && fallbackLng) return { lat: fallbackLat, lng: fallbackLng };
+  if (!obj || typeof obj !== "object") return null;
+  const lat = typeof obj.lat === "number" ? obj.lat : parseFloat(obj.lat);
+  const lng = typeof obj.lng === "number" ? obj.lng : parseFloat(obj.lng);
+  if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
+    return { lat, lng };
+  }
+  return null;
+}
+
+function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function buildGoogleMapsMultiStopUrl(originAddress: any, deliveries: any[]): string {
+  if (deliveries.length === 0) return "";
+
+  const formatAddr = (addr: any) => {
+    if (!addr) return "";
+    if (typeof addr.lat === "number" && typeof addr.lng === "number" && addr.lat !== 0) {
+      return `${addr.lat},${addr.lng}`;
+    }
+    const parts = [addr.logradouro, addr.numero, addr.bairro, addr.cidade].filter(Boolean);
+    return encodeURIComponent(parts.join(", "));
+  };
+
+  const originStr = formatAddr(originAddress);
+  const lastDelivery = deliveries[deliveries.length - 1];
+  const destStr = formatAddr(lastDelivery.endereco_entrega);
+
+  if (deliveries.length === 1) {
+    return `https://www.google.com/maps/dir/?api=1&origin=${originStr}&destination=${destStr}&travelmode=two_wheeler`;
+  }
+
+  const waypointStrs = deliveries
+    .slice(0, deliveries.length - 1)
+    .map((d) => formatAddr(d.endereco_entrega))
+    .filter(Boolean);
+
+  return `https://www.google.com/maps/dir/?api=1&origin=${originStr}&destination=${destStr}&waypoints=${waypointStrs.join("|")}&travelmode=two_wheeler`;
+}
+
 export async function deliveryCourierRoutes(app: FastifyInstance) {
   app.addHook("preHandler", authCourier);
 
-  // ── Obter Corrida Ativa do Entregador ────────────────────────────────
+  // ── Obter Corridas Ativas do Entregador (Suporte a Múltiplas Entregas / Rota Multi-Paradas) ──
   app.get("/api/v1/courier/deliveries/active", async (request, reply) => {
     const courier = request.courier!;
 
-    const activeDelivery = await prisma.delivery.findFirst({
+    const activeDeliveries = await prisma.delivery.findMany({
       where: {
         courier_id: courier.id,
         status: { in: ["atribuido", "aceito", "coletado", "em_rota"] },
       },
       include: {
         store: { select: { id: true, nome: true, settings: true } },
+        branch: { select: { id: true, nome: true, endereco_retirada: true } },
       },
+      orderBy: { criado_em: "asc" },
     });
 
-    if (!activeDelivery) {
-      return reply.send({ delivery: null });
+    if (activeDeliveries.length === 0) {
+      return reply.send({ delivery: null, deliveries: [], total_entregas: 0 });
     }
 
-    const settings = (activeDelivery.store.settings as Record<string, any>) || {};
+    // Identifica a origem (endereço de retirada da filial/loja)
+    const baseOrigin = activeDeliveries[0].endereco_retirada as any;
+    const originCoords = extractCoords(baseOrigin) || { lat: -22.9711, lng: -43.1822 }; // Fallback RJ
 
-    return reply.send({
-      delivery: {
-        ...activeDelivery,
+    // Calcula a distância da loja para cada entrega
+    const deliveriesWithDistance = activeDeliveries.map((d) => {
+      const settings = (d.store.settings as Record<string, any>) || {};
+      const destCoords = extractCoords(d.endereco_entrega as any, d.entrega_lat, d.entrega_lng);
+      const dist = destCoords
+        ? calculateDistanceKm(originCoords.lat, originCoords.lng, destCoords.lat, destCoords.lng)
+        : null;
+
+      return {
+        ...d,
+        distancia_loja_km: dist !== null ? Math.round(dist * 10) / 10 : null,
         exigir_codigo_confirmacao: settings.exigir_codigo_confirmacao !== false,
         exigir_foto: Boolean(settings.exigir_foto),
-      },
+      };
+    });
+
+    // Ordena as entregas da mais próxima até a mais distante da loja
+    const sortedDeliveries = [...deliveriesWithDistance].sort((a, b) => {
+      if (a.distancia_loja_km !== null && b.distancia_loja_km !== null) {
+        return a.distancia_loja_km - b.distancia_loja_km;
+      }
+      return 0;
+    });
+
+    // Marca a ordem de parada (1, 2, 3...) e indica a mais distante
+    const maxIndex = sortedDeliveries.length - 1;
+    const stops = sortedDeliveries.map((d, index) => ({
+      ...d,
+      ordem_parada: index + 1,
+      is_mais_distante: index === maxIndex && sortedDeliveries.length > 1,
+    }));
+
+    const rotaGoogleMapsUrl = buildGoogleMapsMultiStopUrl(baseOrigin, stops);
+    const valorTotalLote = stops.reduce((acc, d) => acc + (Number(d.valor_corrida) || 0), 0);
+
+    return reply.send({
+      delivery: stops[0] || null, // Retrocompatibilidade para quem usa .delivery
+      deliveries: stops,          // Lista completa de todas as entregas do lote
+      total_entregas: stops.length,
+      valor_total_lote: valorTotalLote,
+      mais_distante: stops[maxIndex] || null,
+      rota_google_maps_url: rotaGoogleMapsUrl,
     });
   });
 
@@ -367,6 +460,17 @@ export async function deliveryCourierRoutes(app: FastifyInstance) {
 
     const now = new Date();
 
+    // Verifica se ainda existem outras entregas em andamento neste lote
+    const remainingCount = await prisma.delivery.count({
+      where: {
+        courier_id: courier.id,
+        id: { not: delivery.id },
+        status: { in: ["atribuido", "aceito", "coletado", "em_rota"] },
+      },
+    });
+
+    const nextCourierStatus = remainingCount > 0 ? "em_corrida" : "online";
+
     const [updated] = await prisma.$transaction([
       prisma.delivery.update({
         where: { id: delivery.id },
@@ -378,7 +482,7 @@ export async function deliveryCourierRoutes(app: FastifyInstance) {
       }),
       prisma.courier.update({
         where: { id: courier.id },
-        data: { status: "online" },
+        data: { status: nextCourierStatus },
       }),
       prisma.deliveryEvent.create({
         data: {
@@ -456,5 +560,158 @@ export async function deliveryCourierRoutes(app: FastifyInstance) {
     }
 
     return reply.send({ ok: true });
+  });
+
+  // ── Entregador: Aceitar Todas as Corridas Atribuídas (Lote) ───────────
+  app.post("/api/v1/courier/deliveries/batch-accept", async (request, reply) => {
+    const courier = request.courier!;
+    const now = new Date();
+
+    const pendingDeliveries = await prisma.delivery.findMany({
+      where: {
+        courier_id: courier.id,
+        status: "atribuido",
+      },
+    });
+
+    if (pendingDeliveries.length === 0) {
+      return reply.send({ success: true, count: 0 });
+    }
+
+    await prisma.$transaction([
+      prisma.delivery.updateMany({
+        where: {
+          courier_id: courier.id,
+          status: "atribuido",
+        },
+        data: {
+          status: "aceito",
+          aceito_em: now,
+        },
+      }),
+      prisma.courier.update({
+        where: { id: courier.id },
+        data: { status: "em_corrida" },
+      }),
+    ]);
+
+    for (const d of pendingDeliveries) {
+      prisma.deliveryEvent.create({
+        data: {
+          delivery_id: d.id,
+          store_id: d.store_id,
+          status: "aceito",
+          autor_tipo: "entregador",
+          autor_id: courier.id,
+        },
+      }).catch(() => {});
+
+      dispatchStoreWebhook(d.store_id, "delivery.status_changed", {
+        delivery_id: d.id,
+        core_order_id: d.core_order_id,
+        status: "aceito",
+        courier: { id: courier.id, nome: courier.nome },
+      });
+    }
+
+    return reply.send({ success: true, count: pendingDeliveries.length });
+  });
+
+  // ── Entregador: Coletar Todas as Corridas Aceitas na Loja (Lote) ──────
+  app.post("/api/v1/courier/deliveries/batch-pickup", async (request, reply) => {
+    const courier = request.courier!;
+    const now = new Date();
+
+    const acceptedDeliveries = await prisma.delivery.findMany({
+      where: {
+        courier_id: courier.id,
+        status: "aceito",
+      },
+    });
+
+    if (acceptedDeliveries.length === 0) {
+      return reply.send({ success: true, count: 0 });
+    }
+
+    await prisma.delivery.updateMany({
+      where: {
+        courier_id: courier.id,
+        status: "aceito",
+      },
+      data: {
+        status: "coletado",
+        coletado_em: now,
+      },
+    });
+
+    for (const d of acceptedDeliveries) {
+      prisma.deliveryEvent.create({
+        data: {
+          delivery_id: d.id,
+          store_id: d.store_id,
+          status: "coletado",
+          autor_tipo: "entregador",
+          autor_id: courier.id,
+        },
+      }).catch(() => {});
+
+      dispatchStoreWebhook(d.store_id, "delivery.status_changed", {
+        delivery_id: d.id,
+        core_order_id: d.core_order_id,
+        status: "coletado",
+        courier: { id: courier.id, nome: courier.nome },
+      });
+    }
+
+    return reply.send({ success: true, count: acceptedDeliveries.length });
+  });
+
+  // ── Entregador: Iniciar Rota do Lote de Entregas ───────────────────────
+  app.post("/api/v1/courier/deliveries/batch-start-route", async (request, reply) => {
+    const courier = request.courier!;
+    const now = new Date();
+
+    const collectedDeliveries = await prisma.delivery.findMany({
+      where: {
+        courier_id: courier.id,
+        status: { in: ["aceito", "coletado"] },
+      },
+    });
+
+    if (collectedDeliveries.length === 0) {
+      return reply.send({ success: true, count: 0 });
+    }
+
+    await prisma.delivery.updateMany({
+      where: {
+        courier_id: courier.id,
+        status: { in: ["aceito", "coletado"] },
+      },
+      data: {
+        status: "em_rota",
+        em_rota_em: now,
+      },
+    });
+
+    for (const d of collectedDeliveries) {
+      prisma.deliveryEvent.create({
+        data: {
+          delivery_id: d.id,
+          store_id: d.store_id,
+          status: "em_rota",
+          autor_tipo: "entregador",
+          autor_id: courier.id,
+        },
+      }).catch(() => {});
+
+      dispatchStoreWebhook(d.store_id, "delivery.status_changed", {
+        delivery_id: d.id,
+        core_order_id: d.core_order_id,
+        status: "em_rota",
+        courier: { id: courier.id, nome: courier.nome },
+      });
+    }
+
+    return reply.send({ success: true, count: collectedDeliveries.length });
   });
 }

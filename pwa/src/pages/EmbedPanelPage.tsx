@@ -35,6 +35,7 @@ export function EmbedPanelPage({ authQuery }: Props) {
 
   const [assignDeliveryId, setAssignDeliveryId] = useState<string | null>(null);
   const [selectedCourierId, setSelectedCourierId] = useState("");
+  const [selectedDeliveryIds, setSelectedDeliveryIds] = useState<string[]>([]);
 
   // Configurações
   const [settingsForm, setSettingsForm] = useState<any>({});
@@ -143,13 +144,21 @@ export function EmbedPanelPage({ authQuery }: Props) {
 
   // ── Ações de Entregas ─────────────────────────────────────────────────
   async function handleAssignDelivery() {
-    if (!assignDeliveryId || !selectedCourierId) return;
+    if ((!assignDeliveryId && selectedDeliveryIds.length === 0) || !selectedCourierId) return;
     setActionLoading(true);
     try {
-      await api(`/api/v1/deliveries/${assignDeliveryId}/assign`, {
-        method: "POST",
-        body: JSON.stringify({ courier_id: selectedCourierId }),
-      });
+      if (selectedDeliveryIds.length > 0) {
+        await api(`/api/v1/deliveries/batch-assign`, {
+          method: "POST",
+          body: JSON.stringify({ delivery_ids: selectedDeliveryIds, courier_id: selectedCourierId }),
+        });
+        setSelectedDeliveryIds([]);
+      } else if (assignDeliveryId) {
+        await api(`/api/v1/deliveries/${assignDeliveryId}/assign`, {
+          method: "POST",
+          body: JSON.stringify({ courier_id: selectedCourierId }),
+        });
+      }
       setAssignDeliveryId(null);
       setSelectedCourierId("");
       await loadAll();
@@ -337,31 +346,83 @@ export function EmbedPanelPage({ authQuery }: Props) {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-3">
-                {deliveries.map((d) => (
-                  <div key={d.id} className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-3">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-sm text-slate-900">Pedido #{d.core_order_id}</span>
-                        <span
-                          className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase ${
-                            d.status === "entregue"
-                              ? "bg-emerald-100 text-emerald-800"
-                              : d.status === "em_rota"
-                              ? "bg-blue-100 text-blue-800"
-                              : d.status === "cancelado"
-                              ? "bg-red-100 text-red-800"
-                              : "bg-amber-100 text-amber-800"
-                          }`}
-                        >
-                          {d.status}
-                        </span>
-                      </div>
-
-                      <strong className="text-sm font-mono text-emerald-700 font-bold">
-                        R$ {Number(d.valor_corrida || 0).toFixed(2).replace(".", ",")}
+              <div className="space-y-3">
+                {/* Banner de Atribuição em Lote */}
+                {selectedDeliveryIds.length > 0 && (
+                  <div className="bg-brand-50 border border-brand-200 rounded-2xl p-4 flex items-center justify-between shadow-xs">
+                    <div className="text-xs">
+                      <strong className="text-brand-900 block font-bold">
+                        {selectedDeliveryIds.length} {selectedDeliveryIds.length === 1 ? "pedido selecionado" : "pedidos selecionados"}
                       </strong>
+                      <span className="text-brand-700 text-[11px]">
+                        Atribua todos para um único entregador fazer a rota de paradas.
+                      </span>
                     </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDeliveryIds([])}
+                        className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-600 font-bold hover:bg-slate-50 cursor-pointer"
+                      >
+                        Limpar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAssignDeliveryId("batch")}
+                        className="px-3.5 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Bike className="w-4 h-4" />
+                        <span>Atribuir Lote ({selectedDeliveryIds.length})</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 gap-3">
+                  {deliveries.map((d) => {
+                    const isSelectable = d.status !== "entregue" && d.status !== "cancelado";
+                    const isSelected = selectedDeliveryIds.includes(d.id);
+
+                    return (
+                      <div key={d.id} className={`bg-white rounded-2xl p-5 border shadow-xs space-y-3 transition-all ${
+                        isSelected ? "border-brand-500 bg-brand-50/20" : "border-slate-200"
+                      }`}>
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                          <div className="flex items-center gap-2.5">
+                            {isSelectable && (
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedDeliveryIds((prev) => [...prev, d.id]);
+                                  } else {
+                                    setSelectedDeliveryIds((prev) => prev.filter((id) => id !== d.id));
+                                  }
+                                }}
+                                className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500 cursor-pointer"
+                              />
+                            )}
+                            <span className="font-mono font-bold text-sm text-slate-900">Pedido #{d.core_order_id}</span>
+                            <span
+                              className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase ${
+                                d.status === "entregue"
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : d.status === "em_rota"
+                                  ? "bg-blue-100 text-blue-800"
+                                  : d.status === "cancelado"
+                                  ? "bg-red-100 text-red-800"
+                                  : "bg-amber-100 text-amber-800"
+                              }`}
+                            >
+                              {d.status}
+                            </span>
+                          </div>
+
+                          <strong className="text-sm font-mono text-emerald-700 font-bold">
+                            R$ {Number(d.valor_corrida || 0).toFixed(2).replace(".", ",")}
+                          </strong>
+                        </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                       <div>
@@ -446,8 +507,10 @@ export function EmbedPanelPage({ authQuery }: Props) {
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
+                );
+              })}
+            </div>
+          </div>
             )}
           </div>
         )}
@@ -739,9 +802,13 @@ export function EmbedPanelPage({ authQuery }: Props) {
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl">
             <div className="text-center space-y-1">
               <Bike className="w-10 h-10 text-brand-600 mx-auto" />
-              <h3 className="font-bold text-base text-slate-900">Atribuir Entregador</h3>
+              <h3 className="font-bold text-base text-slate-900">
+                {selectedDeliveryIds.length > 0 ? `Atribuir Lote (${selectedDeliveryIds.length} Pedidos)` : "Atribuir Entregador"}
+              </h3>
               <p className="text-xs text-slate-400">
-                Selecione um entregador próprio ativo para realizar esta corrida.
+                {selectedDeliveryIds.length > 0
+                  ? "Selecione o entregador que fará a rota com todas estas paradas."
+                  : "Selecione um entregador próprio ativo para realizar esta corrida."}
               </p>
             </div>
 

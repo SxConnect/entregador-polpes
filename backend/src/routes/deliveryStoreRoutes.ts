@@ -423,6 +423,81 @@ export async function deliveryStoreRoutes(app: FastifyInstance) {
     });
   });
 
+  // ── Atribuir Múltiplas Entregas a um Entregador (Lote / Rota Única) ───
+  app.post("/api/v1/deliveries/batch-assign", async (request, reply) => {
+    const store = request.store!;
+    const batchAssignSchema = z.object({
+      delivery_ids: z.array(z.string().uuid()).min(1, "Selecione pelo menos uma entrega"),
+      courier_id: z.string().uuid("courier_id inválido"),
+    });
+
+    const parsed = batchAssignSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: "Dados de lote inválidos",
+        issues: parsed.error.format(),
+      });
+    }
+
+    const { delivery_ids, courier_id } = parsed.data;
+
+    const link = await prisma.courierStoreLink.findFirst({
+      where: {
+        courier_id,
+        store_id: store.id,
+        ativo: true,
+      },
+      include: { courier: true },
+    });
+
+    if (!link) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: "Entregador inativo ou não vinculado a esta loja.",
+      });
+    }
+
+    const now = new Date();
+
+    const result = await prisma.delivery.updateMany({
+      where: {
+        id: { in: delivery_ids },
+        store_id: store.id,
+        status: { in: ["pendente", "recusado"] },
+      },
+      data: {
+        courier_id,
+        status: "atribuido",
+        atribuido_em: now,
+      },
+    });
+
+    for (const dId of delivery_ids) {
+      prisma.deliveryEvent.create({
+        data: {
+          delivery_id: dId,
+          store_id: store.id,
+          status: "atribuido",
+          autor_tipo: "loja",
+          autor_id: store.id,
+          payload: { courier_id, courier_nome: link.courier.nome, em_lote: true },
+        },
+      }).catch(() => {});
+    }
+
+    return reply.send({
+      success: true,
+      atribuidas: result.count,
+      courier: {
+        id: link.courier.id,
+        nome: link.courier.nome,
+      },
+    });
+  });
+
   // ── Cancelar Entrega pela Loja ────────────────────────────────────────
   app.post("/api/v1/deliveries/:id/cancel", async (request, reply) => {
     const store = request.store!;
