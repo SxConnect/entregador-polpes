@@ -29,7 +29,7 @@ RUN npm run build
 # ── Stage 3: Runner (Produção) ─────────────────────────────────────────
 FROM node:20-alpine AS runner
 WORKDIR /app
-RUN apk add --no-cache openssl libc6-compat
+RUN apk add --no-cache openssl libc6-compat curl
 
 ENV NODE_ENV=production
 ENV PORT=4001
@@ -52,4 +52,7 @@ COPY pwa/public/logo-default.png /app/uploads/logos/logo-default.png
 
 EXPOSE 4001
 
-CMD ["sh", "-c", "npx prisma db push --skip-generate && node dist/server.js"]
+HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=5 \
+  CMD node -e "require('http').get('http://127.0.0.1:4001/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+
+CMD ["node", "dist/server.js"]
